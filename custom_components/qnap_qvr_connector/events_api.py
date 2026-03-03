@@ -7,6 +7,7 @@ Permission to copy/modify is granted for non-commercial use only.
 from __future__ import annotations
 
 import logging
+import time
 from aiohttp import web
 
 from homeassistant.components.http import HomeAssistantView
@@ -60,6 +61,10 @@ class QVREventsView(HomeAssistantView):
                 {"error": "Invalid start_time, end_time or max_result"},
                 status=400,
             )
+        if start <= 0 or end <= 0 or end <= start:
+            # ACC can call without full range during first render; provide sane window.
+            end = int(time.time() * 1000)
+            start = end - (24 * 60 * 60 * 1000)
         source = request.query.get("source", "auto")
         try:
             payload = await client.get_metadata_events(

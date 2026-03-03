@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.camera import Camera
+from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
@@ -70,13 +70,11 @@ class QVRCameraEntity(Camera):
         self._stream_id = stream_id
         self._guid = camera.get("guid", "")
         self._name = camera.get("name", f"Camera {camera.get('channel_index', '?')}")
-        if self._stream_id == 0:
-            self._attr_name = self._name
-        elif self._stream_id == 1:
-            self._attr_name = f"{self._name} Sub"
-        else:
-            self._attr_name = f"{self._name} Stream {self._stream_id + 1}"
-        self._attr_unique_id = f"qvr_{self._guid}_stream_{self._stream_id}"
+        stream_number = self._stream_id + 1
+        # Keep predictable entity naming for users and dashboards.
+        self._attr_name = f"{self._name} stream {stream_number}"
+        self._attr_unique_id = f"qvr_{self._guid}_stream_{stream_number}"
+        self._attr_supported_features = CameraEntityFeature.STREAM
 
     @property
     def device_info(self) -> dict[str, Any]:
@@ -94,6 +92,7 @@ class QVRCameraEntity(Camera):
             "qvr_entry_id": self._entry.entry_id,
             "qvr_guid": self._guid,
             "qvr_stream": self._stream_id,
+            "qvr_stream_number": self._stream_id + 1,
             "qvr_host": self._entry.data.get(CONF_HOST),
         }
 

@@ -13,7 +13,6 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from pyqvrpro_client import ApiAuthError, QVRProClient
@@ -40,6 +39,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 CONF_DISCOVERED_HOST = "discovered_host"
+CONF_REFRESH_DISCOVERY = "refresh_discovery"
 
 
 async def _discover_hosts() -> list[str]:
@@ -90,86 +90,150 @@ class QVRConnectorFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
-        self._discovered_ip: str | None = None
+        self._discovered_hosts: list[str] = []
         self._probe_data: dict | None = None
 
     async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
-        """Handle initial step."""
-        errors = {}
-        discovered_hosts = await _discover_hosts()
-        if user_input:
-            host = user_input.get(CONF_HOST) or user_input.get(CONF_DISCOVERED_HOST)
+        """Handle initial step by choosing discovery or manual setup."""
+        return self.async_show_menu(
+            step_id="user",
+            menu_options=["discover", "manual"],
+        )
+
+    async def async_step_discover(self, user_input: dict | None = None) -> FlowResult:
+        """Discover QNAP servers and create entry from selected host."""
+        errors: dict[str, str] = {}
+        if user_input and user_input.get(CONF_REFRESH_DISCOVERY):
+            self._discovered_hosts = await _discover_hosts()
+            user_input = None
+        elif user_input:
+            host = user_input.get(CONF_DISCOVERED_HOST) or user_input.get(CONF_HOST)
             if not host:
                 errors["base"] = "host_required"
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=self._build_user_schema(discovered_hosts),
-                    errors=errors,
-                )
-            port = int(user_input.get(CONF_PORT, DEFAULT_PORT))
-            port_ssl = int(user_input.get(CONF_PORT_SSL, DEFAULT_PORT_SSL))
-            use_ssl = user_input.get(CONF_USE_SSL, False)
-            username = user_input[CONF_USERNAME]
-            password = user_input[CONF_PASSWORD]
+            else:
+                return await self._async_attempt_create_entry(host, user_input, errors)
 
-            try:
-                probe = await _try_probe(host, port_ssl if use_ssl else port, use_ssl)
-                prefix = get_interface_prefix(probe)
-                if probe.get("force_ssl"):
-                    use_ssl = True
-                    port = int(probe.get("https_port", port_ssl))
-                else:
-                    port = int(probe.get("http_port", port))
-
-                await _validate_auth(host, port, username, password, prefix)
-
-                return self.async_create_entry(
-                    title=f"QVR @ {host}",
-                    data={
-                        CONF_HOST: host,
-                        CONF_PORT: port,
-                        CONF_PORT_SSL: port_ssl,
-                        CONF_USE_SSL: use_ssl,
-                        CONF_USERNAME: username,
-                        CONF_PASSWORD: password,
-                        CONF_PREFIX: prefix,
-                        CONF_VERIFY_SSL: False,
-                    },
-                )
-            except CannotConnect:
-                errors["base"] = "cannot_connect"
-            except InvalidAuth:
-                errors["base"] = "invalid_auth"
-            except Exception as e:
-                _LOGGER.exception("Unexpected error")
-                errors["base"] = "unknown"
+        if not self._discovered_hosts:
+            self._discovered_hosts = await _discover_hosts()
+        if not self._discovered_hosts:
+            errors.setdefault("base", "no_discovered_hosts")
 
         return self.async_show_form(
-            step_id="user",
-            data_schema=self._build_user_schema(discovered_hosts),
+            step_id="discover",
+            data_schema=self._build_discover_schema(self._discovered_hosts),
             errors=errors,
         )
 
-    def _build_user_schema(self, discovered_hosts: list[str]) -> vol.Schema:
-        """Build dynamic schema with optional discovery list and manual host input."""
-        schema: dict[Any, Any] = {
+    async def async_step_manual(self, user_input: dict | None = None) -> FlowResult:
+        """Manual host setup fallback when discovery is unavailable."""
+        errors: dict[str, str] = {}
+        if user_input:
+            host = user_input.get(CONF_HOST)
+            if not host:
+                errors["base"] = "host_required"
+            else:
+                return await self._async_attempt_create_entry(host, user_input, errors)
+
+        return self.async_show_form(
+            step_id="manual",
+            data_schema=self._build_manual_schema(),
+            errors=errors,
+        )
+
+    def _base_connect_schema(self) -> dict[Any, Any]:
+        """Common auth/network fields for both discover and manual steps."""
+        return {
             vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
             vol.Required(CONF_PORT_SSL, default=DEFAULT_PORT_SSL): int,
             vol.Required(CONF_USE_SSL, default=False): bool,
             vol.Required(CONF_USERNAME): str,
             vol.Required(CONF_PASSWORD): str,
         }
+
+    def _build_discover_schema(self, discovered_hosts: list[str]) -> vol.Schema:
+        """Schema for discovery-driven setup with optional refresh."""
+        schema = self._base_connect_schema()
         if discovered_hosts:
             schema = {
-                vol.Optional(CONF_DISCOVERED_HOST, default=discovered_hosts[0]): vol.In(
-                    discovered_hosts
-                ),
+                vol.Required(
+                    CONF_DISCOVERED_HOST,
+                    default=discovered_hosts[0],
+                ): vol.In(discovered_hosts),
                 vol.Optional(CONF_HOST): str,
+                vol.Optional(CONF_REFRESH_DISCOVERY, default=False): bool,
                 **schema,
             }
         else:
-            schema = {vol.Required(CONF_HOST): str, **schema}
+            schema = {
+                vol.Optional(CONF_HOST): str,
+                vol.Optional(CONF_REFRESH_DISCOVERY, default=True): bool,
+                **schema,
+            }
         return vol.Schema(schema)
+
+    def _build_manual_schema(self) -> vol.Schema:
+        """Schema for direct manual host entry."""
+        return vol.Schema({vol.Required(CONF_HOST): str, **self._base_connect_schema()})
+
+    async def _async_attempt_create_entry(
+        self,
+        host: str,
+        user_input: dict[str, Any],
+        errors: dict[str, str],
+    ) -> FlowResult:
+        """Probe host and validate auth before creating config entry."""
+        port = int(user_input.get(CONF_PORT, DEFAULT_PORT))
+        port_ssl = int(user_input.get(CONF_PORT_SSL, DEFAULT_PORT_SSL))
+        use_ssl = bool(user_input.get(CONF_USE_SSL, False))
+        username = str(user_input[CONF_USERNAME])
+        password = str(user_input[CONF_PASSWORD])
+
+        try:
+            probe = await _try_probe(host, port_ssl if use_ssl else port, use_ssl)
+            prefix = get_interface_prefix(probe)
+            if probe.get("force_ssl"):
+                use_ssl = True
+                port = int(probe.get("https_port", port_ssl))
+            else:
+                port = int(probe.get("http_port", port))
+
+            await _validate_auth(host, port, username, password, prefix)
+
+            await self.async_set_unique_id(f"{DOMAIN}_{host}_{port}")
+            self._abort_if_unique_id_configured()
+
+            return self.async_create_entry(
+                title=f"QVR @ {host}",
+                data={
+                    CONF_HOST: host,
+                    CONF_PORT: port,
+                    CONF_PORT_SSL: port_ssl,
+                    CONF_USE_SSL: use_ssl,
+                    CONF_USERNAME: username,
+                    CONF_PASSWORD: password,
+                    CONF_PREFIX: prefix,
+                    CONF_VERIFY_SSL: False,
+                },
+            )
+        except CannotConnect:
+            errors["base"] = "cannot_connect"
+        except InvalidAuth:
+            errors["base"] = "invalid_auth"
+        except Exception:
+            _LOGGER.exception("Unexpected error")
+            errors["base"] = "unknown"
+
+        if self._discovered_hosts:
+            return self.async_show_form(
+                step_id="discover",
+                data_schema=self._build_discover_schema(self._discovered_hosts),
+                errors=errors,
+            )
+        return self.async_show_form(
+            step_id="manual",
+            data_schema=self._build_manual_schema(),
+            errors=errors,
+        )
 
     async def async_step_reauth(self, entry_data: dict) -> FlowResult:
         """Handle reauth."""

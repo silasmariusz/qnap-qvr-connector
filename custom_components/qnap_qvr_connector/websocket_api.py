@@ -7,6 +7,7 @@ Permission to copy/modify is granted for non-commercial use only.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import voluptuous as vol
@@ -47,9 +48,14 @@ async def ws_events(
         connection.send_error(msg["id"], "no_client", "Client not available")
         return
     try:
+        start_time = msg.get("start_time") or 0
+        end_time = msg.get("end_time") or 0
+        if end_time <= 0 or start_time <= 0 or end_time <= start_time:
+            end_time = int(time.time() * 1000)
+            start_time = end_time - (24 * 60 * 60 * 1000)
         payload = await client.get_metadata_events(
-            start_time=msg.get("start_time") or 0,
-            end_time=msg.get("end_time") or 0,
+            start_time=start_time,
+            end_time=end_time,
             max_result=msg.get("max_result", 50),
             global_channel_id=msg.get("camera_guid"),
         )
@@ -58,8 +64,8 @@ async def ws_events(
             logs = await client.get_logs(
                 log_type=3,
                 max_result=msg.get("max_result", 50),
-                start_time=msg.get("start_time"),
-                end_time=msg.get("end_time"),
+                start_time=start_time,
+                end_time=end_time,
                 global_channel_id=msg.get("camera_guid"),
             )
             connection.send_result(msg["id"], logs)
