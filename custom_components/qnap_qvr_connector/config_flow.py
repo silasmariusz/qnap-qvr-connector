@@ -17,7 +17,11 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from pyqvrpro_client import ApiAuthError, QVRProClient
-from pyqvrpro_client.discovery import get_interface_prefix, probe_discovery_endpoint
+from pyqvrpro_client.discovery import (
+    discover_qnap_udp,
+    get_interface_prefix,
+    probe_discovery_endpoint,
+)
 
 from .const import (
     CONF_HOST,
@@ -35,6 +39,18 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+CONF_DISCOVERED_HOST = "discovered_host"
+
+
+async def _discover_hosts() -> list[str]:
+    """Return a deduplicated list of discovered QNAP host IPs."""
+    devices = await discover_qnap_udp(timeout=2.0)
+    hosts: list[str] = []
+    for device in devices:
+        ip = device.get("ip")
+        if isinstance(ip, str) and ip and ip not in hosts:
+            hosts.append(ip)
+    return hosts
 
 
 async def _try_probe(host: str, port: int, use_ssl: bool = False) -> dict:
@@ -80,8 +96,16 @@ class QVRConnectorFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
         """Handle initial step."""
         errors = {}
+        discovered_hosts = await _discover_hosts()
         if user_input:
-            host = user_input[CONF_HOST]
+            host = user_input.get(CONF_HOST) or user_input.get(CONF_DISCOVERED_HOST)
+            if not host:
+                errors["base"] = "host_required"
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=self._build_user_schema(discovered_hosts),
+                    errors=errors,
+                )
             port = int(user_input.get(CONF_PORT, DEFAULT_PORT))
             port_ssl = int(user_input.get(CONF_PORT_SSL, DEFAULT_PORT_SSL))
             use_ssl = user_input.get(CONF_USE_SSL, False)
@@ -122,18 +146,30 @@ class QVRConnectorFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_HOST): str,
-                    vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
-                    vol.Required(CONF_PORT_SSL, default=DEFAULT_PORT_SSL): int,
-                    vol.Required(CONF_USE_SSL, default=False): bool,
-                    vol.Required(CONF_USERNAME): str,
-                    vol.Required(CONF_PASSWORD): str,
-                }
-            ),
+            data_schema=self._build_user_schema(discovered_hosts),
             errors=errors,
         )
+
+    def _build_user_schema(self, discovered_hosts: list[str]) -> vol.Schema:
+        """Build dynamic schema with optional discovery list and manual host input."""
+        schema: dict[Any, Any] = {
+            vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
+            vol.Required(CONF_PORT_SSL, default=DEFAULT_PORT_SSL): int,
+            vol.Required(CONF_USE_SSL, default=False): bool,
+            vol.Required(CONF_USERNAME): str,
+            vol.Required(CONF_PASSWORD): str,
+        }
+        if discovered_hosts:
+            schema = {
+                vol.Optional(CONF_DISCOVERED_HOST, default=discovered_hosts[0]): vol.In(
+                    discovered_hosts
+                ),
+                vol.Optional(CONF_HOST): str,
+                **schema,
+            }
+        else:
+            schema = {vol.Required(CONF_HOST): str, **schema}
+        return vol.Schema(schema)
 
     async def async_step_reauth(self, entry_data: dict) -> FlowResult:
         """Handle reauth."""

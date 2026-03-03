@@ -5,6 +5,7 @@
         "title": "QNAP QVR Connector",
         "description": "Connect to your QNAP QVR Pro/Elite NAS",
         "data": {
+          "discovered_host": "Discovered QNAP device",
           "host": "Host / IP",
           "port": "HTTP Port",
           "port_ssl": "HTTPS Port",
@@ -24,6 +25,7 @@
     },
     "error": {
       "cannot_connect": "Could not connect to QVR. Check host and port.",
+      "host_required": "Select a discovered host or enter host/IP manually.",
       "invalid_auth": "Invalid username or password, or insufficient permissions.",
       "unknown": "Unexpected error occurred."
     },

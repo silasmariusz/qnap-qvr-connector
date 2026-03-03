@@ -27,8 +27,24 @@ class QVREventsView(HomeAssistantView):
         """Return Metadata Vault events as JSON."""
         hass = request.app["hass"]
         entry_id = request.query.get("entry_id")
+        camera_entity = request.query.get("camera_entity")
+        camera_guid = request.query.get("camera_guid")
+        camera_stream: int | None = None
+        if camera_entity and not entry_id:
+            state = hass.states.get(camera_entity)
+            if state:
+                attrs = state.attributes
+                entry_id = attrs.get("qvr_entry_id")
+                if not camera_guid:
+                    camera_guid = attrs.get("qvr_guid")
+                stream_attr = attrs.get("qvr_stream")
+                if isinstance(stream_attr, int):
+                    camera_stream = stream_attr
         if not entry_id:
-            return web.json_response({"error": "entry_id required"}, status=400)
+            return web.json_response(
+                {"error": "entry_id required (or camera_entity with qvr_entry_id attribute)"},
+                status=400,
+            )
         data = hass.data.get(DOMAIN, {}).get(entry_id)
         if not data:
             return web.json_response({"error": "Entry not found"}, status=404)
@@ -44,7 +60,6 @@ class QVREventsView(HomeAssistantView):
                 {"error": "Invalid start_time, end_time or max_result"},
                 status=400,
             )
-        camera_guid = request.query.get("camera_guid")
         source = request.query.get("source", "auto")
         try:
             payload = await client.get_metadata_events(
@@ -63,8 +78,18 @@ class QVREventsView(HomeAssistantView):
                     end_time=end,
                     global_channel_id=camera_guid,
                 )
+                if camera_stream is not None:
+                    items = logs.get("items", logs.get("item", []))
+                    if isinstance(items, list):
+                        for event in items:
+                            if isinstance(event, dict):
+                                event["qvr_stream"] = camera_stream
                 return web.json_response(logs)
 
+            if camera_stream is not None:
+                for event in normalized.get("items", []):
+                    if isinstance(event, dict):
+                        event["qvr_stream"] = camera_stream
             return web.json_response(normalized)
         except Exception as e:
             _LOGGER.exception("Events API failed: %s", e)

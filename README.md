@@ -21,8 +21,9 @@ Custom Home Assistant integration for QNAP QVR Pro/Elite/Surveillance.
 
 1. Go to **Settings -> Devices & Services -> Add Integration**.
 2. Search for **QNAP QVR Connector**.
-3. Fill in host, ports, username, and password.
-4. Finish the flow and note the generated config entry ID.
+3. If QNAP Finder discovers devices, pick one from the list or enter host manually.
+4. Fill in host, ports, username, and password.
+5. Finish the flow.
 
 ## Advanced Camera Card example
 
@@ -31,15 +32,14 @@ type: custom:advanced-camera-card
 cameras:
   - camera_entity: camera.qvr_camera_1
     engine: qvr
-    qvr:
-      entry_id: "<HA_CONFIG_ENTRY_ID>"
-      camera_guid: "<QVR_CHANNEL_GUID>"
 ```
+
+`entry_id` and `camera_guid` are optional and are auto-resolved from camera entity attributes.
 
 ## Manual install (without HACS)
 
 1. Copy `custom_components/qnap_qvr_connector` to your HA config folder under `custom_components/`.
-2. The integration auto-installs `pyqvrpro-client` from GitHub release tag `v0.2.0.1002`.
+2. The integration auto-installs `pyqvrpro-client` from GitHub release tag `v0.2.0.1003`.
 3. Restart Home Assistant.
 
 ## Notes
