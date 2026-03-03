@@ -39,7 +39,7 @@ cameras:
 ## Manual install (without HACS)
 
 1. Copy `custom_components/qnap_qvr_connector` to your HA config folder under `custom_components/`.
-2. Ensure dependency `pyqvrpro-client>=0.2.0.1000` is available in the HA Python environment.
+2. The integration auto-installs `pyqvrpro-client` from GitHub release tag `v0.2.0.1001`.
 3. Restart Home Assistant.
 
 ## Notes
