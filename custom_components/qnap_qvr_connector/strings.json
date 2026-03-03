@@ -3,7 +3,11 @@
     "step": {
       "user": {
         "title": "QNAP QVR Connector",
-        "description": "Choose setup mode."
+        "description": "Choose setup mode.",
+        "menu_options": {
+          "discover": "Discover servers",
+          "manual": "Manual setup"
+        }
       },
       "discover": {
         "title": "Discover QNAP servers",
@@ -46,10 +50,6 @@
       "host_required": "Select a discovered host or enter host/IP manually.",
       "invalid_auth": "Invalid username or password, or insufficient permissions.",
       "unknown": "Unexpected error occurred."
-    },
-    "menu_options": {
-      "discover": "Discover servers",
-      "manual": "Manual setup"
     },
     "abort": {
       "reauth_successful": "Reauthentication successful.",
