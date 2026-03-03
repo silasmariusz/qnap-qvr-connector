@@ -1,0 +1,15 @@
+{
+  "domain": "qnap_qvr_connector",
+  "name": "QNAP QVR Connector",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/silasmariusz/qnap-qvr-connector",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/silasmariusz/qnap-qvr-connector/issues",
+  "requirements": [
+    "pyqvrpro-client>=0.2.0"
+  ],
+  "version": "0.2.0"
+}

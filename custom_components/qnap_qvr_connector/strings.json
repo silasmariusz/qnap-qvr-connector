@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "QNAP QVR Connector",
+        "description": "Connect to your QNAP QVR Pro/Elite NAS",
+        "data": {
+          "host": "Host / IP",
+          "port": "HTTP Port",
+          "port_ssl": "HTTPS Port",
+          "use_ssl": "Use HTTPS",
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate",
+        "description": "Credentials invalid. Enter new credentials.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to QVR. Check host and port.",
+      "invalid_auth": "Invalid username or password, or insufficient permissions.",
+      "unknown": "Unexpected error occurred."
+    },
+    "abort": {
+      "reauth_successful": "Reauthentication successful.",
+      "reauth_entry_missing": "Entry not found."
+    }
+  }
+}
