@@ -45,6 +45,7 @@ class QVREventsView(HomeAssistantView):
                 status=400,
             )
         camera_guid = request.query.get("camera_guid")
+        source = request.query.get("source", "auto")
         try:
             payload = await client.get_metadata_events(
                 start_time=start,
@@ -52,7 +53,19 @@ class QVREventsView(HomeAssistantView):
                 max_result=max_result,
                 global_channel_id=camera_guid,
             )
-            return web.json_response(normalize_metadata_payload(payload))
+            normalized = normalize_metadata_payload(payload)
+
+            if source != "metadata" and normalized.get("totalItems", 0) == 0:
+                logs = await client.get_logs(
+                    log_type=3,
+                    max_result=max_result,
+                    start_time=start,
+                    end_time=end,
+                    global_channel_id=camera_guid,
+                )
+                return web.json_response(logs)
+
+            return web.json_response(normalized)
         except Exception as e:
             _LOGGER.exception("Events API failed: %s", e)
             return web.json_response({"error": str(e)}, status=500)

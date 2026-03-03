@@ -27,6 +27,7 @@ _LOGGER = logging.getLogger(__name__)
         vol.Optional("end_time"): int,
         vol.Optional("max_result", default=50): int,
         vol.Optional("camera_guid"): str,
+        vol.Optional("source", default="auto"): str,
     }
 )
 @websocket_api.async_response
@@ -52,7 +53,18 @@ async def ws_events(
             max_result=msg.get("max_result", 50),
             global_channel_id=msg.get("camera_guid"),
         )
-        connection.send_result(msg["id"], normalize_metadata_payload(payload))
+        normalized = normalize_metadata_payload(payload)
+        if msg.get("source", "auto") != "metadata" and normalized.get("totalItems", 0) == 0:
+            logs = await client.get_logs(
+                log_type=3,
+                max_result=msg.get("max_result", 50),
+                start_time=msg.get("start_time"),
+                end_time=msg.get("end_time"),
+                global_channel_id=msg.get("camera_guid"),
+            )
+            connection.send_result(msg["id"], logs)
+            return
+        connection.send_result(msg["id"], normalized)
     except Exception as e:
         _LOGGER.exception("WebSocket events failed: %s", e)
         connection.send_error(msg["id"], "error", str(e))
