@@ -110,21 +110,7 @@ class QVRCameraEntity(Camera):
     async def stream_source(self) -> str | None:
         """Return a stream URL for Home Assistant camera.play_stream."""
         try:
-            # Prefer RTSP for quality/latency; HA stream worker handles transcoding.
-            return await self._client.get_live_stream_uri(
-                self._guid,
-                self._stream_id,
-                protocol="rtsp",
-            )
-        except Exception as e:
-            _LOGGER.warning(
-                "RTSP source failed for %s stream %s: %s",
-                self._guid,
-                self._stream_id,
-                e,
-            )
-        try:
-            # Fallback to HLS when RTSP publish is unavailable on firmware.
+            # Prefer HLS token URL because some QVR RTSP endpoints require extra auth.
             return await self._client.get_live_stream_uri(
                 self._guid,
                 self._stream_id,
@@ -132,7 +118,21 @@ class QVRCameraEntity(Camera):
             )
         except Exception as e:
             _LOGGER.warning(
-                "HLS fallback source failed for %s stream %s: %s",
+                "HLS source failed for %s stream %s: %s",
+                self._guid,
+                self._stream_id,
+                e,
+            )
+        try:
+            # RTSP fallback still helps on setups where HLS is disabled.
+            return await self._client.get_live_stream_uri(
+                self._guid,
+                self._stream_id,
+                protocol="rtsp",
+            )
+        except Exception as e:
+            _LOGGER.warning(
+                "RTSP fallback source failed for %s stream %s: %s",
                 self._guid,
                 self._stream_id,
                 e,
