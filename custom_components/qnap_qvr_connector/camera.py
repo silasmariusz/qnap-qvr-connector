@@ -58,36 +58,13 @@ async def async_setup_entry(
     for cam in cameras:
         stream_ids: list[int] = []
         guid = cam.get("guid")
-        stream_defs: list[dict[str, Any]] = []
         if isinstance(guid, str) and guid:
             try:
-                stream_defs = await client.get_streams(guid)
-                stream_ids = _extract_stream_ids_from_defs(stream_defs)
+                stream_ids = _extract_stream_ids_from_defs(await client.get_streams(guid))
             except Exception as err:
                 _LOGGER.debug("Stream discovery failed for %s: %s", guid, err)
         if not stream_ids:
             stream_ids = _extract_stream_ids_from_camera_payload(cam)
-
-        # Resolve and deduplicate by effective source URL to avoid stream_2/3 mirroring stream_1.
-        if isinstance(guid, str) and guid and stream_ids:
-            unique_stream_ids: list[int] = []
-            seen_sources: set[str] = set()
-            for stream_id in stream_ids:
-                source_url: str | None = None
-                for protocol in ("hls", "rtsp"):
-                    try:
-                        source_url = await client.get_live_stream_uri(guid, stream_id, protocol=protocol)
-                        break
-                    except Exception:
-                        continue
-                if source_url:
-                    if source_url in seen_sources:
-                        continue
-                    seen_sources.add(source_url)
-                    unique_stream_ids.append(stream_id)
-            if unique_stream_ids:
-                stream_ids = unique_stream_ids
-
         if not stream_ids:
             # Safe fallback for cameras exposing only one stream.
             stream_ids = [0]
