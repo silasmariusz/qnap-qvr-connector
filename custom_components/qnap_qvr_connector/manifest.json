@@ -10,7 +10,7 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/silasmariusz/qnap-qvr-connector/issues",
   "requirements": [
-    "pyqvrpro-client @ https://github.com/silasmariusz/pyqvrpro-client/archive/refs/tags/v0.2.0.1003.zip"
+    "pyqvrpro-client @ https://github.com/silasmariusz/pyqvrpro-client/archive/refs/tags/v0.2.0.1004.zip"
   ],
-  "version": "0.2.0.1009"
+  "version": "0.2.0.1010"
 }

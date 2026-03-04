@@ -54,11 +54,26 @@ async def async_setup_entry(
     if not coordinator:
         return
     cameras = coordinator.data.get("cameras", [])
+    stream_ids_by_guid: dict[str, list[int]] = {}
+    try:
+        channels = await client.get_channels_with_streams()
+        for channel in channels:
+            guid = channel.get("guid")
+            streams = channel.get("streams", [])
+            if isinstance(guid, str) and guid and isinstance(streams, list):
+                ids = _extract_stream_ids_from_defs(streams)
+                if ids:
+                    stream_ids_by_guid[guid] = ids
+    except Exception as err:
+        _LOGGER.debug("StreamingOutput channel discovery failed: %s", err)
+
     entities: list[QVRCameraEntity] = []
     for cam in cameras:
         stream_ids: list[int] = []
         guid = cam.get("guid")
-        if isinstance(guid, str) and guid:
+        if isinstance(guid, str) and guid and guid in stream_ids_by_guid:
+            stream_ids = stream_ids_by_guid[guid]
+        elif isinstance(guid, str) and guid:
             try:
                 stream_ids = _extract_stream_ids_from_defs(await client.get_streams(guid))
             except Exception as err:
@@ -134,20 +149,7 @@ class QVRCameraEntity(Camera):
         requested_stream = self._stream_id
 
         async def _resolve_stream_url(stream_id: int) -> str | None:
-            """Resolve HLS-first then RTSP for one stream id."""
-            try:
-                return await self._client.get_live_stream_uri(
-                    self._guid,
-                    stream_id,
-                    protocol="hls",
-                )
-            except Exception as e:
-                _LOGGER.warning(
-                    "HLS source failed for %s stream %s: %s",
-                    self._guid,
-                    stream_id,
-                    e,
-                )
+            """Resolve RTSP-first then HLS for one stream id."""
             try:
                 return await self._client.get_live_stream_uri(
                     self._guid,
@@ -156,7 +158,20 @@ class QVRCameraEntity(Camera):
                 )
             except Exception as e:
                 _LOGGER.warning(
-                    "RTSP fallback source failed for %s stream %s: %s",
+                    "RTSP source failed for %s stream %s: %s",
+                    self._guid,
+                    stream_id,
+                    e,
+                )
+            try:
+                return await self._client.get_live_stream_uri(
+                    self._guid,
+                    stream_id,
+                    protocol="hls",
+                )
+            except Exception as e:
+                _LOGGER.warning(
+                    "HLS fallback source failed for %s stream %s: %s",
                     self._guid,
                     stream_id,
                     e,
