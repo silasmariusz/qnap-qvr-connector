@@ -107,9 +107,24 @@ class QVRCameraEntity(Camera):
             _LOGGER.error("Snapshot failed for %s: %s", self._guid, e)
             return None
 
-    async def async_stream_source(self) -> str | None:
-        """Return a high-quality HLS source for HA stream worker."""
+    async def stream_source(self) -> str | None:
+        """Return a stream URL for Home Assistant camera.play_stream."""
         try:
+            # Prefer RTSP for quality/latency; HA stream worker handles transcoding.
+            return await self._client.get_live_stream_uri(
+                self._guid,
+                self._stream_id,
+                protocol="rtsp",
+            )
+        except Exception as e:
+            _LOGGER.warning(
+                "RTSP source failed for %s stream %s: %s",
+                self._guid,
+                self._stream_id,
+                e,
+            )
+        try:
+            # Fallback to HLS when RTSP publish is unavailable on firmware.
             return await self._client.get_live_stream_uri(
                 self._guid,
                 self._stream_id,
@@ -117,7 +132,7 @@ class QVRCameraEntity(Camera):
             )
         except Exception as e:
             _LOGGER.warning(
-                "HLS source failed for %s stream %s: %s",
+                "HLS fallback source failed for %s stream %s: %s",
                 self._guid,
                 self._stream_id,
                 e,
